@@ -1,12 +1,44 @@
+"""
+├── voc2yolo.py
+└── VOCdevkit
+    └── VOC2007
+        ├── Annotations
+        ├── ImageSets
+        └── JPEGImages
+Annotations: 用来存放xml格式的标注文件
+JPEGImages: 用来存放图片数据集
+ImageSets: 数据集划分文件，类别标签，图片名称list的txt文件
+
+
+COCO_2017/
+        ├── val2017     # 总的验证集
+        ├── train2017    # 总的训练集
+        ├── annotations    # COCO标注
+        │   ├── instances_train2017.json     # object instances（目标实例） ---目标实例的训练集标注
+        │   ├── instances_val2017.json        # object instances（目标实例） ---目标实例的验证集标注
+        │   ├── person_keypoints_train2017.json     # object keypoints（目标上的关键点） ---关键点检测的训练集标注
+        │   ├── person_keypoints_val2017.json       # object keypoints（目标上的关键点） ---关键点检测的验证集标注
+        │   ├── captions_train2017.json    # image captions（看图说话） ---看图说话的训练集标注
+        │___├── captions_val2017.json      # image captions（看图说话） ---看图说话的验证集标注
+
+
+功能： 将VOC的annotation标注文件转换为COCO的json文件
+方法一： 通过txt文件生成，按照VOC数据集下ImageSets/Main中已经划分好的train.txt, val.txt, test.txt进行转换，生成对应的3个json文件
+方法二： 通过文件夹生成，当VOC数据集下ImageSets/Main中的划分txt文件不存在时，将annotations文件夹内的xml文件全部转换成一个json文件，
+        一个annotations文件夹转换成一个json文件，如果想生成3个train.json, val.json, test.json文件，需要有3个对应的annotations
+        文件夹，可手动创建。
+"""
+
 import xml.etree.ElementTree as ET
 import os
 import json
+import argparse
 
 coco = dict()
-coco["images"] = []
-coco["type"] = "instances"
-coco["annotations"] = []
-coco["categories"] = []
+coco['images'] = []
+coco['type'] = 'instances'
+coco['annotations'] = []
+coco['categories'] = []
 
 category_set = dict()
 image_set = set()
@@ -52,21 +84,25 @@ def addAnnoItem(object_name, image_id, category_id, bbox):
     annotation_item = dict()
     annotation_item['segmentation'] = []
     seg = []
+
     # bbox[] is x,y,w,h
     # left_top
     seg.append(bbox[0])
     seg.append(bbox[1])
+
     # left_bottom
     seg.append(bbox[0])
     seg.append(bbox[1] + bbox[3])
+
     # right_bottom
     seg.append(bbox[0] + bbox[2])
     seg.append(bbox[1] + bbox[3])
+
     # right_top
     seg.append(bbox[0] + bbox[2])
     seg.append(bbox[1])
 
-    # annotation_item['segmentation'].append(seg)
+    annotation_item['segmentation'].append(seg)
 
     annotation_item['area'] = bbox[2] * bbox[3]
     annotation_item['iscrowd'] = 0
@@ -87,17 +123,14 @@ def _read_image_ids(image_sets_file):
     return ids
 
 
-"""通过txt文件生成"""
+# 通过txt文件生成: 按照VOC数据集下ImageSets/Main中的已划分好的train.txt,val.txt,test.txt进行转换，生成相应的3个json文件
+def parse_xml_files_by_txt(data_dir, save_json_file, image_sets_file):
+    if not os.path.exists(image_sets_file):
+        raise Exception('Could not find txt file at {}'.format(image_sets_file))
 
-
-def parseXmlFiles_by_txt(data_dir, json_save_path, split="train"):
-    label_file = split + ".txt"
-    image_set_file = data_dir + "/ImageSets/Main/" + label_file
-    ids = _read_image_ids(image_set_file)
-
+    ids = _read_image_ids(image_sets_file)
     for _id in ids:
-        xml_file = data_dir + f"/Annotations/{_id}.xml"
-
+        xml_file = os.path.join(data_dir, f"/Annotations/{_id}.xml")
         bndbox = dict()
         size = dict()
         current_image_id = None
@@ -180,18 +213,14 @@ def parseXmlFiles_by_txt(data_dir, json_save_path, split="train"):
                     print('add annotation with {},{},{},{}'.format(object_name, current_image_id, current_category_id,
                                                                    bbox))
                     addAnnoItem(object_name, current_image_id, current_category_id, bbox)
-    json.dump(coco, open(json_save_path, 'w'))
+    json.dump(coco, open(save_json_file, 'w'))
 
 
-"""从xml文件夹中生成"""
-
-
-def parseXmlFiles(image_path, json_save_path):
-    # for f in os.listdir(xml_path):
-    with open(image_path, 'r') as file:
-        files = file.readlines()
-    for file in files:
-        file = file.strip()
+# 直接从xml文件夹中生成
+def parse_xml_files(xml_path, save_json_file):
+    for f in os.listdir(xml_path):
+        if not f.endswith('.xml'):
+            continue
 
         bndbox = dict()
         size = dict()
@@ -202,8 +231,7 @@ def parseXmlFiles(image_path, json_save_path):
         size['height'] = None
         size['depth'] = None
 
-        xml_file = file.replace("images", "annotation").replace(".jpg", '.xml')
-        print(xml_file)
+        xml_file = os.path.join(xml_path, f)
 
         tree = ET.parse(xml_file)
         root = tree.getroot()
@@ -278,16 +306,21 @@ def parseXmlFiles(image_path, json_save_path):
                     print('add annotation with {},{},{},{}'.format(object_name, current_image_id, current_category_id,
                                                                    bbox))
                     addAnnoItem(object_name, current_image_id, current_category_id, bbox)
-    json.dump(coco, open(json_save_path, 'w'))
+    json.dump(coco, open(save_json_file, 'w'))
 
 
 if __name__ == "__main__":
-    # 通过txt文件生成
-    # voc_data_dir="E:/VOCdevkit/VOC2007"
-    # json_save_path="E:/VOCdevkit/voc2007trainval.json"
-    # parseXmlFiles_by_txt(voc_data_dir,json_save_path,"trainval")
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--root_path', type=str, default='VOCdevkit/VOC2007/')
+    parser.add_argument('--txt', type=str, default='VOCdevkit/VOC2007/ImageSets/Main/train.txt')
+    parser.add_argument('--save_json_path', type=str, default='instances_train2007.json')
+    args = parser.parse_args()
 
-    # 通过文件夹生成
-    image_list = "/mnt/data/datasets/traffic_dst/train.txt"
-    json_save_path = "/mnt/data/datasets/traffic_dst/train.json"
-    parseXmlFiles(image_list, json_save_path)
+    if os.path.exists(args.txt):
+        voc_data_dir = args.root_path
+        save_json_path = args.save_json_path
+        parse_xml_files_by_txt(voc_data_dir, save_json_path, args.txt)
+    else:
+        anno_data_dir = os.path.join(args.root_path, 'Annotations')
+        save_json_path = args.save_json_path
+        parse_xml_files(anno_data_dir, save_json_path)

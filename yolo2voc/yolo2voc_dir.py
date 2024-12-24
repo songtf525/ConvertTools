@@ -1,30 +1,38 @@
-import os
-from PIL import Image
+"""
+├── yolo2voc.py
+└── VOCdevkit
+    └── VOC2007
+        ├── Annotations
+        ├── ImageSets
+        └── JPEGImages
+Annotations: 用来存放xml格式的标注文件
+JPEGImages: 用来存放图片数据集
+ImageSets: 数据集划分文件，类别标签，图片名称list的txt文件
+
+功能: yolo格式数据集转换为voc格式，这个脚本输入图像路径，标签路径，类别名称和保存xml的路径
+缺点: 如何yolo标签层级很深很复杂，使用路径输入可能就要操作多次，易出错，适用于全部图像和标签在一个文件夹的情形
+"""
 import argparse
+import os
+
+from PIL import Image
 
 
-def txt2xml(image_list, classes_file):
+def txtLabel_to_xmlLabel(classes_file, source_txt_path, source_img_path, save_xml_path):
+    if not os.path.exists(save_xml_path):
+        os.makedirs(save_xml_path)
     classes = open(classes_file).read().splitlines()
-    print("classes ", classes)
-    with open(image_list, "r") as file:
-        files = file.readlines()
-    for file in files:
-        img_path = file.strip()
+    print(classes)
+    for file in os.listdir(source_txt_path):
+        img_path = os.path.join(source_img_path, file.replace('.txt', '.png'))
         img_file = Image.open(img_path)
-        txt_path = img_path.replace('.jpg', '.txt').replace('images', 'labels')
-        print("txt_path ", txt_path)
-        txt_file = open(txt_path).read().splitlines()
-        xml_path = txt_path.replace('.txt', '.xml').replace('labels', 'annotation')
-        save_xml_root = os.path.dirname(xml_path)
-        print(save_xml_root)
-        if not os.path.exists(save_xml_root):
-            os.makedirs(save_xml_root)
-        xml_file = open(xml_path, 'w')
+        txt_file = open(os.path.join(source_txt_path, file)).read().splitlines()
+        print(txt_file)
+        xml_file = open(os.path.join(save_xml_path, file.replace('.txt', '.xml')), 'w')
         width, height = img_file.size
         xml_file.write('<annotation>\n')
         xml_file.write('\t<folder>simple</folder>\n')
-        xml_file.write('\t<filename>' + str(os.path.basename(img_path)) + '</filename>\n')
-        xml_file.write('\t<path>' + str(img_path) + '</path>\n')
+        xml_file.write('\t<filename>' + str(file) + '</filename>\n')
         xml_file.write('\t<size>\n')
         xml_file.write('\t\t<width>' + str(width) + ' </width>\n')
         xml_file.write('\t\t<height>' + str(height) + '</height>\n')
@@ -56,12 +64,14 @@ def txt2xml(image_list, classes_file):
             xml_file.write('\t\t</bndbox>\n')
             xml_file.write('\t</object>\n')
         xml_file.write('</annotation>')
-        xml_file.close()
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument("--classes_file", type=str, default="")
-    parser.add_argument('--image_list', type=str, default="")
+    parser.add_argument('--classes_file', type=str, default="person.names")
+    parser.add_argument('--source_txt_path', type=str, default="")
+    parser.add_argument('--source_img_path', type=str, default="")
+    parser.add_argument('--save_xml_path', type=str, default="")
     opt = parser.parse_args()
-    txt2xml(opt.image_list, opt.classes_file)
+
+    txtLabel_to_xmlLabel(opt.classes_file, opt.source_txt_path, opt.source_img_path, opt.save_xml_path)
